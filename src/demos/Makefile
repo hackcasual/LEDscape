@@ -3,11 +3,11 @@
 # Build the various demos
 #
 #
-BIN-y += fire
-BIN-y += life
-BIN-y += cube-life
-BIN-y += matrix-test
-BIN-y += identify
+#BIN-y += fire
+#BIN-y += life
+#BIN-y += cube-life
+#BIN-y += matrix-test
+#BIN-y += identify
 
 fire.srcs += fire.c
 life.srcs += life.c

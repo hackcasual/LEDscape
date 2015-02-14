@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include <string.h>
+#include <sys/time.h>
 #include <inttypes.h>
 #include <errno.h>
 #include <unistd.h>
@@ -49,6 +50,13 @@ static const uint8_t gpios3[] = {
 
 #define ARRAY_COUNT(a) ((sizeof(a) / sizeof(*a)))
 
+static void print_time() {
+     struct timeval tv;
+     struct timezone tz;
+     gettimeofday(&tv, &tz);
+     //localtime(&tv.tv_sec);
+     printf(" %d \n", tv.tv_usec);
+}
 
 /*
  * Configure all of our output pins.
@@ -258,9 +266,12 @@ ledscape_matrix_draw(
 	const void * const buffer
 )
 {
+        print_time();        
 	static unsigned frame = 0;
 	const uint32_t * const in = buffer;
 	uint8_t * const out = leds->pru->ddr + leds->frame_size * frame;
+
+	static unsigned i_off = 0;
 
 	// matrix is re-packed such that a 6-byte read will bring in
 	// the brightness values for all six outputs of a given panel.
@@ -273,9 +284,12 @@ ledscape_matrix_draw(
 	const ledscape_matrix_config_t * const config
 		= &leds->config->matrix_config;
 
-	const size_t panel_stride = config->panel_width*2*3*LEDSCAPE_MATRIX_OUTPUTS;
+	const size_t panel_stride = 96*2*3*16;
 
-	for (unsigned i = 0 ; i < LEDSCAPE_MATRIX_OUTPUTS ; i++)
+	const unsigned s_w = 512;
+	const unsigned s_h = 64;
+
+	/*for (unsigned i = 0 ; i < LEDSCAPE_MATRIX_OUTPUTS ; i++)
 	{
 		for (unsigned j = 0 ; j < LEDSCAPE_MATRIX_PANELS ; j++)
 		{
@@ -301,11 +315,31 @@ ledscape_matrix_draw(
 				panel->rot
 			);
 		}
+	}*/
+
+	for (unsigned x = 0; x < 96; x++) {
+		for (unsigned y = 0; y < 64; y++) {
+			uint32_t *ip = &in[(y * 96 + x)];
+
+			uint8_t *op = &out[((y % 16) * 96 * 16 + ((x * 16 + (y / 16)))) * 3];
+  			op[0] = (ip[0]) & 0xFF;
+			op[1] = (ip[0] >> 8) & 0xFF;
+			op[2] = (ip[0] >> 16) & 0xFF;	
+		}
+	}
+
+
+	i_off += 48;
+
+	if (i_off > leds->frame_size) {
+		i_off = 0;
 	}
 
 	leds->ws281x->pixels_dma = leds->pru->ddr_addr + leds->frame_size * frame;
+	usleep(1000);
 	// disable double buffering for now
-	//frame = (frame + 1) & 1;
+	frame = (frame + 1) & 1;
+        print_time();
 }
 
 
@@ -382,7 +416,7 @@ ledscape_matrix_init(
 {
 	ledscape_matrix_config_t * const config = &config_union->matrix_config;
 	pru_t * const pru = pru_init(0);
-	const size_t frame_size = config->panel_width * config->panel_height * 3 * LEDSCAPE_MATRIX_OUTPUTS * LEDSCAPE_MATRIX_PANELS;
+	const size_t frame_size = config->panel_width * config->panel_height * 3 * LEDSCAPE_MATRIX_OUTPUTS * LEDSCAPE_MATRIX_PANELS * 2;
 
 	ledscape_t * const leds = calloc(1, sizeof(*leds));
 
@@ -397,7 +431,7 @@ ledscape_matrix_init(
 
 	*(leds->ws281x) = (ws281x_command_t) {
 		.pixels_dma	= 0, // will be set in draw routine
-		.num_pixels	= (config->leds_width * 3) * 16,
+		.num_pixels	= (96 * 3) * 16,
 		.command	= 0,
 		.response	= 0,
 	};
@@ -427,7 +461,7 @@ ledscape_strip_init(
 {
 	ledscape_strip_config_t * const config = &config_union->strip_config;
 	pru_t * const pru = pru_init(0);
-	const size_t frame_size = 48 * config->leds_width * 8 * 3;
+	const size_t frame_size = 48 * 96 * 16 * 3;
 
 	printf("frame-size %zu, ddr-size=%zu\n", frame_size, pru->ddr_size);
 #if 0
@@ -606,34 +640,27 @@ ledscape_printf(
 
 /** Default ledscape config */
 #define DEFAULT_MATRIX(i) { \
-		{ 0*32, i*16, 0 }, \
-		{ 1*32, i*16, 0 }, \
-		{ 2*32, i*16, 0 }, \
-		{ 3*32, i*16, 0 }, \
-		{ 4*32, i*16, 0 }, \
-		{ 5*32, i*16, 0 }, \
-		{ 6*32, i*16, 0 }, \
-		{ 7*32, i*16, 0 }, \
+		{ 0*32, i*32, 0 }, \
+		{ 1*32, i*32, 0 }, \
+		{ 2*32, i*32, 0 }, \
+		{ 3*32, i*32, 0 }, \
+		{ 4*32, i*32, 0 }, \
+		{ 5*32, i*32, 0 }, \
+		{ 6*32, i*32, 0 }, \
+		{ 7*32, i*32, 0 }, \
 	} \
 
 ledscape_config_t ledscape_matrix_default = {
 	.matrix_config = {
 		.type		= LEDSCAPE_MATRIX,
-		.width		= 256,
-		.height		= 128,
+		.width		= 96,
+		.height		= 64,
 		.panel_width	= 32,
-		.panel_height 	= 16,
-		.leds_width	= 256,
-		.leds_height	= 128,
+		.panel_height 	= 32,
+		.leds_width	= 128,
+		.leds_height	= 64,
 		.panels		= {
-			DEFAULT_MATRIX(0),
-			DEFAULT_MATRIX(1),
-			DEFAULT_MATRIX(2),
-			DEFAULT_MATRIX(3),
-			DEFAULT_MATRIX(4),
-			DEFAULT_MATRIX(5),
-			DEFAULT_MATRIX(6),
-			DEFAULT_MATRIX(7),
+
 		},
 	},
 };

@@ -235,9 +235,9 @@ main(
 		// copy the 3-byte values into the 4-byte framebuffer
 		for (unsigned x = 0 ; x < width ; x++) // 256
 		{
-			for (unsigned y = 0 ; y < height ; y++) // 64
+			for (unsigned y = 0 ; y < height/2 ; y++) // 64
 			{
-				uint32_t * out = &fb[(height*frame_part + y)*width + x];
+				uint32_t * out = &fb[((height/2)*frame_part + y)*width + x];
 				const uint8_t * in = &buf[1 + 3*(y*width + x)];
 
 				uint8_t r = in[0];
