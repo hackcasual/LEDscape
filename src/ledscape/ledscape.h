@@ -102,6 +102,11 @@ ledscape_draw(
 	const void * const rgb // 4-byte rgb data
 );
 
+extern void
+ledscape_draw_packed(
+	ledscape_t * const leds,
+	const void * const rgb // 4-byte rgb data
+);
 
 extern void
 ledscape_set_color(

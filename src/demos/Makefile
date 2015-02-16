@@ -5,7 +5,7 @@
 #
 #BIN-y += fire
 #BIN-y += life
-#BIN-y += cube-life
+BIN-y += cube-life
 #BIN-y += matrix-test
 #BIN-y += identify
 

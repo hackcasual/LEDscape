@@ -12,7 +12,7 @@
 #include "ledscape.h"
 
 // sideways pyramid; 256 height, but 128 wide
-#define WIDTH 512
+#define WIDTH 96
 #define HEIGHT 64
 
 
@@ -199,8 +199,9 @@ main(
 	const char ** argv
 )
 {
+    printf("Starting...\n");
 	ledscape_matrix_config_t * config = &ledscape_matrix_default;
-
+    printf("Starting...\n");
 	if (argc > 1)
 	{
 		config = ledscape_config(argv[1]);
@@ -208,27 +209,37 @@ main(
 			return EXIT_FAILURE;
 	}
 
-	config->width = WIDTH;
-	config->height = HEIGHT;
+    config->matrix_config.width = WIDTH;
+    config->matrix_config.height = HEIGHT;
+    printf("Configuring\n");
 	ledscape_t * const leds = ledscape_init(config, 0);
+    printf("Configuring\n");
+
 
 	printf("init done\n");
 	time_t last_time = time(NULL);
+    printf("init done again\n");
 	unsigned last_i = 0;
 
 	unsigned i = 0;
+    printf("Initing pallete\n");    
 	init_pallete();
+    printf("Done Initing pallete\n");    
 	uint32_t * const p = calloc(WIDTH*HEIGHT,4);
 
 	while (1)
 	{
 		// Alternate frame buffers on each draw command
 
+        printf("Drawing\n");
+
 		time_t now = time(NULL);
 		const uint32_t delta = now - last_time;
 
 		fire_draw(p);
 		sparkles(p, delta);
+
+        printf("Drawing\n");
 
 		ledscape_draw(leds, p);
 		usleep(50000);

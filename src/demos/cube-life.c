@@ -375,8 +375,8 @@ check_edge(
 int
 main(void)
 {
-	const int width = 128;
-	const int height = 128;
+	const int width = 96;
+	const int height = 64;
 	ledscape_config_t * const config = &ledscape_matrix_default;
 	config->matrix_config.panel_height = 32;
 

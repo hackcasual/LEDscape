@@ -24,6 +24,7 @@
 #include <getopt.h>
 #include "util.h"
 #include "ledscape.h"
+#include "miniz.c"
 
 static int verbose;
 
@@ -96,8 +97,8 @@ main(
 	const char * config_file = NULL;
 	const char * startup_message = "";
 	int timeout = 60;
-	unsigned width = 512;
-	unsigned height = 64;
+	unsigned width = 96;
+	unsigned height = 128;
 	int no_init = 0;
 
 	while (1)
@@ -154,6 +155,7 @@ main(
 	// largest possible UDP packet
 	// 1 header byte + width*height/2 for a half frame
 	uint8_t *buf = calloc(frame_size,1);
+	uint8_t *buf2 = calloc(frame_size,1);	
 
 	fprintf(stderr, "%u x %u, UDP port %u\n", width, height, port);
 
@@ -209,10 +211,16 @@ main(
 			continue;
 		}
 
-		const ssize_t rlen = recv(sock, buf, frame_size, 0);
+		ssize_t rlen = recv(sock, buf2, frame_size, 0);
 		if (rlen < 0)
 			die("recv failed: %s\n", strerror(errno));
 		warn_once("received %zu bytes\n", rlen);
+
+		ssize_t decomlen = frame_size + 1;
+
+		int ec = uncompress(buf, &decomlen, buf2, rlen);
+
+		rlen = decomlen;
 
 		const unsigned frame_part = buf[0];
 		if (frame_part != 0 && frame_part != 1)
@@ -249,7 +257,7 @@ main(
 
 		// only draw after the second frame
 		if (frame_part == 1)
-			ledscape_draw(leds, fb);
+			ledscape_draw(leds, &fb[1]);
 
 		gettimeofday(&stop_tv, NULL);
 		timersub(&stop_tv, &start_tv, &delta_tv);

@@ -194,84 +194,15 @@ ledscape_remap(
 #endif
 }
 
-
-/** Copy a 16x32 region from in to a 32x16 region of out.
- * If rot == 0, rotate -90, else rotate +90.
- */
-static void
-ledscape_matrix_panel_copy(
-	uint8_t * const out,
-	const uint32_t * const in,
-	const ledscape_matrix_config_t * const config,
-	const int rot
-)
-{
-	const size_t row_stride = LEDSCAPE_MATRIX_OUTPUTS*3*2;
-	const size_t row_len = config->leds_width*row_stride;
-
-	for (int x = 0 ; x < config->panel_width ; x++)
-	{
-		for (int y = 0 ; y < config->panel_height ; y++)
-		{
-			int ix, iy;
-			if (rot == 0)
-			{
-				// no rotation == (0,0) => (0,0)
-				ix = x;
-				iy = y;
-			} else
-			if (rot == 1)
-			{
-				// rotate +90 (0,0) => (0,15)
-				ix = config->panel_height-1 - y;
-				iy = x;
-			} else
-			if (rot == 2)
-			{
-				// rotate -90 (0,0) => (31,0)
-				ix = y;
-				iy = config->panel_width-1 - x;
-			} else
-			if (rot == 3)
-			{
-				// flip == (0,0) => (31,15)
-				ix = config->panel_width-1 - x;
-				iy = config->panel_height-1 - y;
-			} else
-			{
-				// barf
-				ix = iy = 0;
-			}
-
-			const uint32_t * const col_ptr = &in[ix + config->width*iy];
-			const uint32_t col = *col_ptr;
-
-			// the top half and bottom half of the panels
-			// are squished together in the output since
-			// they are drawn simultaneously.
-			uint8_t * const pix = &out[x*row_stride + (y/8)*3 + (y%8)*row_len];
-
-			pix[0] = (col >> 16) & 0xFF; // red
-			pix[1] = (col >>  8) & 0xFF; // green
-			pix[2] = (col >>  0) & 0xFF; // blue
-			//printf("%d,%d => %p %p %08x\n", x, y, pix, col_ptr, col);
-		}
-	}
-}
-
-
 static void
 ledscape_matrix_draw(
 	ledscape_t * const leds,
 	const void * const buffer
 )
 {
-        print_time();        
 	static unsigned frame = 0;
 	const uint32_t * const in = buffer;
 	uint8_t * const out = leds->pru->ddr + leds->frame_size * frame;
-
-	static unsigned i_off = 0;
 
 	// matrix is re-packed such that a 6-byte read will bring in
 	// the brightness values for all six outputs of a given panel.
@@ -284,64 +215,74 @@ ledscape_matrix_draw(
 	const ledscape_matrix_config_t * const config
 		= &leds->config->matrix_config;
 
-	const size_t panel_stride = 96*2*3*16;
+	const size_t phh = config->panel_height / 2;
+	const size_t h = config->height;
+	const size_t w = config->width;
+	const size_t panel_stride = w * 6 * phh;
 
-	const unsigned s_w = 512;
-	const unsigned s_h = 64;
+	for (unsigned x = 0; x < w; x++) {
+		for (unsigned y = 0; y < h; y++) {
+			uint32_t *ip = &in[(y * w + x)];
 
-	/*for (unsigned i = 0 ; i < LEDSCAPE_MATRIX_OUTPUTS ; i++)
-	{
-		for (unsigned j = 0 ; j < LEDSCAPE_MATRIX_PANELS ; j++)
-		{
-			const ledscape_matrix_panel_t * const panel
-				= &config->panels[i][j];
-
-			// the start of the panel in the input
-			// is defined by the panel's xy coordinate
-			// and the width of the input image.
-			const uint32_t * const ip
-				= &in[panel->x + panel->y*config->width];
-
-			// the start of the panel's output is defined
-			// by the current output panel number and the total
-			// number of panels in the chain.
-			uint8_t * const op = &out[6*i + j*panel_stride];
-		
-			// copy the top half of this matrix
-			ledscape_matrix_panel_copy(
-				op,
-				ip,
-				config,
-				panel->rot
-			);
-		}
-	}*/
-
-	for (unsigned x = 0; x < 96; x++) {
-		for (unsigned y = 0; y < 64; y++) {
-			uint32_t *ip = &in[(y * 96 + x)];
-
-			uint8_t *op = &out[((y % 16) * 96 * 16 + ((x * 16 + (y / 16)))) * 3];
+			uint8_t *op = &out[((y % phh) * w * phh + ((x * phh + (y / phh)))) * 3];
   			op[0] = (ip[0]) & 0xFF;
 			op[1] = (ip[0] >> 8) & 0xFF;
 			op[2] = (ip[0] >> 16) & 0xFF;	
 		}
 	}
 
+	leds->ws281x->pixels_dma = leds->pru->ddr_addr + leds->frame_size * frame;
 
-	i_off += 48;
 
-	if (i_off > leds->frame_size) {
-		i_off = 0;
+	usleep(1000);
+
+	frame = (frame + 1) & 1;
+}
+
+static void
+ledscape_matrix_draw_packed(
+	ledscape_t * const leds,
+	const void * const buffer
+)
+{
+	static unsigned frame = 0;
+	const uint8_t * const in = buffer;
+	uint8_t * const out = leds->pru->ddr + leds->frame_size * frame;
+
+	// matrix is re-packed such that a 6-byte read will bring in
+	// the brightness values for all six outputs of a given panel.
+	// this means that the rows stride 16 * 3 pixels at a time.
+	// 
+	// this way the PRU can read all sixteen output pixels in
+	// one LBBO and clock them out.
+	// while there are eight output chains, there are two simultaneous
+	// per output chain.
+	const ledscape_matrix_config_t * const config
+		= &leds->config->matrix_config;
+
+	const size_t phh = config->panel_height / 2;
+	const size_t h = config->height;
+	const size_t w = config->width;
+	const size_t panel_stride = w * 6 * phh;
+
+	for (unsigned x = 0; x < w; x++) {
+		for (unsigned y = 0; y < h; y++) {
+			uint32_t *ip = &in[(y * w + x)];
+
+			uint8_t *op = &out[((y % phh) * w * phh + ((x * phh + (y / phh)))) * 3];
+  			op[0] = ip[0];
+			op[1] = ip[0];
+			op[2] = ip[0];	
+		}
 	}
 
 	leds->ws281x->pixels_dma = leds->pru->ddr_addr + leds->frame_size * frame;
-	usleep(1000);
-	// disable double buffering for now
-	frame = (frame + 1) & 1;
-        print_time();
-}
 
+
+	usleep(1000);
+
+	frame = (frame + 1) & 1;
+}
 
 /** Translate the RGBA buffer to the correct output type and
  * initiate the transfer of a frame to the LED strips.
